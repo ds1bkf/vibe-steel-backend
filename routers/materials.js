@@ -72,6 +72,17 @@ function searchInCache(query, page = 1, limit = 50, sort = 'spec', order = 'asc'
   
   // 페이지네이션
   const total = results.length;
+  // limit이 매우 크면 전체 데이터 반환 (페이지네이션 없음)
+  if (limit >= 999999) {
+    return {
+      data: results,
+      total,
+      page: 1,
+      limit: total,
+      pages: 1
+    };
+  }
+  
   const skip = (page - 1) * limit;
   const paginatedResults = results.slice(skip, skip + limit);
   
@@ -142,13 +153,14 @@ router.post('/', async (req, res) => {
 // READ - 전체 조회 (페이지네이션 및 검색 지원) - 캐시에서 반환
 router.get('/', async (req, res) => {
   try {
+    const startTime = Date.now(); // 성능 측정 시작
     const { 
       spec, 
       product, 
       method_calc,
       cat_product,
       page = 1, 
-      limit = 50,
+      limit, // limit이 없으면 전체 데이터 반환
       sort = 'spec',
       order = 'asc'
     } = req.query;
@@ -173,6 +185,9 @@ router.get('/', async (req, res) => {
         .sort(sortObj);
       
       const total = await SteelMaterial.countDocuments(query);
+      const duration = Date.now() - startTime;
+      
+      console.log(`📊 DB 조회 완료: ${materials.length}개 항목, ${duration}ms 소요`);
       
       return res.json({
         success: true,
@@ -183,13 +198,19 @@ router.get('/', async (req, res) => {
           total,
           pages: Math.ceil(total / parseInt(limit))
         },
-        fromCache: false
+        fromCache: false,
+        duration: `${duration}ms`
       });
     }
     
     // 캐시에서 검색
     const query = { spec, product, method_calc, cat_product };
-    const result = searchInCache(query, parseInt(page), parseInt(limit), sort, order);
+    // limit이 없거나 0이면 전체 데이터 반환 (매우 큰 값으로 설정)
+    const limitValue = limit ? parseInt(limit) : 999999;
+    const result = searchInCache(query, parseInt(page), limitValue, sort, order);
+    const duration = Date.now() - startTime;
+    
+    console.log(`⚡ 캐시에서 반환: ${result.data.length}개 항목 (요청: page=${page}, limit=${limit || '전체'}), ${duration}ms 소요 (캐시 크기: ${materialsCache.data.length}개)`);
     
     res.json({
       success: true,
@@ -201,7 +222,9 @@ router.get('/', async (req, res) => {
         pages: result.pages
       },
       fromCache: true,
-      lastSync: materialsCache.lastSync
+      lastSync: materialsCache.lastSync,
+      duration: `${duration}ms`,
+      cacheSize: materialsCache.data.length
     });
   } catch (error) {
     res.status(500).json({ 
