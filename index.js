@@ -149,6 +149,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // 라우터 import
 const materialsRouter = require('./routers/materials');
+const loadCacheFromDB = materialsRouter.loadCacheFromDB;
 
 // 기본 라우트
 app.get('/', (req, res) => {
@@ -225,6 +226,10 @@ async function startServer() {
     if (!mongoConnected) {
       console.warn('⚠️  MongoDB 연결 실패했지만 서버는 계속 실행됩니다.');
       console.warn('⚠️  API 엔드포인트는 작동하지 않을 수 있습니다.');
+    } else {
+      // MongoDB 연결 성공 시 캐시 로드
+      console.log('📦 캐시 데이터 로딩 시작...');
+      await loadCacheFromDB();
     }
     
     const server = app.listen(PORT, () => {
